@@ -32,19 +32,26 @@ Cервис бронирования
 
 Обработка платежей, выплаты, отмены. Хранение методов оплаты.
 
-### 1.6 Notification Service
+### 1.7 Notification Service
 
 Отправка email, SMS, push-уведомлений о статусе бронирования, напоминаний, маркетинговых сообщений.
 
-### 1.7 Message Broker (Kafka)
+### 1.8 Message Broker (Kafka)
 
 Асинхронная доставка событий между сервисами
+
+### 1.9 Payment Service Provider
+
+Внешний платежный шлюз
+Обрабатывает платежи, возвраты, хранит платежные методы пользователей.
+Взаимодействие через HTTPS/REST API
 
 ## 2. Протоколы
 
 ### HTTPS / REST
 
 - `Client` → `API Gateway`
+- `Payment` → `PSP`
 
 Протокол который гарантированно работает в браузерах и мобильных приложениях без дополнительных библиотек. HTTP-кэширование, сжатие, CDN.
 
@@ -64,6 +71,12 @@ Protobuf компактнее JSON, строгая типизация исклю
 
 Асинхронность там, где результат не нужен пользователю немедленно. Уведомления, инвалидация кэша, ожидание ответа от платежного шлюза не должны блокировать основной поток.
 
+### Webhook
+
+- `PSP` → `Payment`
+
+Платежные шлюзы отправляют асинхронные уведомления о статусе транзакций (confirmed, failed, refunded).
+
 ## 3. Схема взаимодействия
 
 ```mermaid
@@ -80,9 +93,14 @@ graph TD
     Payment["Payment Service"]
     Notif["Notification Service"]
     Kafka["Message Broker<br/>Apache Kafka"]
+    PSP["Payment Service Provider"]
 
     %% Клиентские запросы
     Person -->|"HTTPS / REST"| Gateway
+
+    %% Взаимодействие с платежным шлюзом
+    Payment -->|"HTTPS / REST"| PSP
+    PSP -.->|"Webhook (async)"| Payment
 
     %% Синхронные gRPC вызовы
     Gateway -->|"gRPC"| User
@@ -107,11 +125,13 @@ graph TD
     classDef service fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000
     classDef broker fill:#ffebee,stroke:#c62828,stroke-width:3px,color:#000
     classDef db fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000
+    classDef external fill:#fce9ff,stroke:#a81dbc,stroke-width:2px,stroke-dasharray: 5 5,color:#000
 
     class Person person
     class Gateway gateway
     class User,Property,Inventory,Booking,Payment,Notif service
     class Kafka broker
+    class PSP external
 ```
 
 ## 4. API-контракты
