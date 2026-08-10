@@ -50,7 +50,7 @@ Cервис бронирования
 
 ### gRPC
 
-- `API Gateway` → все сервисы
+- `API Gateway` → `User`, `Property`, `Booking`, `Inventory`
 - `Booking` → `Inventory`
 - `Booking` → `Payment`
 
@@ -58,7 +58,6 @@ Protobuf компактнее JSON, строгая типизация исклю
 
 ### Message broker
 
-- `Booking` → `Kafka` (события бронирования, команда на оплату)
 - `Payment` → `Kafka` (статус платежа)
 - `Inventory` → `Kafka` (изменение цен и доступности)
 - `Kafka` → `Notification`, `Booking`, `Property` (подписки)
@@ -174,6 +173,15 @@ paths:
   /bookings:
     post:
       summary: Создание бронирования
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            example: "550e8400-e29b-41d4-a716-446655440000"
+          description: Ключ идемпотентности (UUID) для безопасных повторных попыток.
+            При повторных запросах с тем же ключом возвращается результат первого запроса.
       requestBody:
         required: true
         content:
@@ -218,6 +226,34 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /bookings/{booking_id}/events:
+    get:
+      summary: Поток событий бронирования SSE
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "oWJjZDQ1NjgtOTBlZi1naGlq"
+      responses:
+        "200":
+          description: Поток SSE событий. Клиент подключается и получает обновления статуса 
+            бронирования в реальном времени: pending_payment → confirmed/cancelled/failed
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: status_update
+                  data: {"status": "confirmed", "booking_id": "qf71Hg9501001fkgldoo124r"}
+        "404":
+          description: Бронирование не найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+                
   /bookings/{booking_id}/cancel:
     post:
       summary: Отмена бронирования
@@ -228,6 +264,13 @@ paths:
           schema:
             type: string
             example: "oWJjZDQ1NjgtOTBlZi1naGlq"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            example: "550e8400-e29b-41d4-a716-446655440001"
+          description: Ключ идемпотентности для безопасных повторных попыток отмены.
       requestBody:
         required: true
         content:
@@ -294,8 +337,8 @@ components:
           type: string
           example: "Стандартный номер"
         total_price:
-          type: number
-          example: 3200.00
+          type: integer
+          example: 3200
         currency:
           type: string
           example: "RUB"
@@ -312,6 +355,7 @@ components:
         - check_out
         - guests
         - primary_guest
+        - idempotency-key
       properties:
         property_id:
           type: string
@@ -400,8 +444,8 @@ components:
           format: date
           example: "2026-07-27"
         total_price:
-          type: number
-          example: 3200.00
+          type: integer
+          example: 3200
         currency:
           type: string
           example: "RUB"
