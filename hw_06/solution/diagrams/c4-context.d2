@@ -1,0 +1,72 @@
+# C4 Level 1 - System Context: TicketHub
+# Рендер: d2 diagrams/c4-context.d2 diagrams/c4-context.svg
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+  }
+}
+
+direction: down
+
+people: Пользователи {
+  style.fill: "#f5f5f5"
+  style.stroke: "#999999"
+
+  buyer: Покупатель {
+    shape: person
+  }
+  organizer: Организатор {
+    shape: person
+  }
+  admin: Администратор {
+    shape: person
+  }
+  controller: Контролёр {
+    shape: person
+  }
+}
+
+tickethub: TicketHub {
+  label: "TicketHub\nПлатформа продажи билетов:\nкаталог, бронирование, оплата,\nэлектронные билеты"
+  style: {
+    fill: "#1168bd"
+    font-color: "#ffffff"
+    stroke: "#0b4a7a"
+    stroke-width: 1
+  }
+}
+
+ext: Внешние системы {
+  style.fill: "#f5f5f5"
+  style.stroke: "#999999"
+
+  psp: "Платёжный провайдер\nStripe / ЮKassa (осн. + резерв.)" {
+    style.fill: "#dddddd"
+  }
+  email: "Email-провайдер\nSendGrid / Unisender" {
+    style.fill: "#dddddd"
+  }
+  push: "Push-шлюз\nFCM / APNs" {
+    style.fill: "#dddddd"
+  }
+  sms: "SMS-шлюз\nOTP-коды" {
+    style.fill: "#dddddd"
+  }
+  skud: "СКУД площадок\nтурникеты" {
+    style.fill: "#dddddd"
+  }
+}
+
+# --- связи ---
+people.buyer -> tickethub: "каталог, бронь, оплата, билеты (HTTPS)"
+people.organizer -> tickethub: "CRUD событий, дашборд продаж (HTTPS)"
+people.admin -> tickethub: "модерация событий и шаблонов схем, отмены (HTTPS)"
+people.controller -> tickethub: "валидация билета (HTTPS)"
+
+tickethub <-> ext.psp: "платежи/возвраты;\nwebhooks подтверждений (REST)"
+tickethub -> ext.email: "билеты, уведомления (REST)"
+tickethub -> ext.push: "push-уведомления (REST)"
+tickethub -> ext.sms: "OTP (REST)"
+ext.skud -> tickethub: "валидация билетов\n(HTTPS, API-key)"
