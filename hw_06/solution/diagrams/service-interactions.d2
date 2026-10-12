@@ -1,0 +1,157 @@
+# C4 Level 2 - Взаимодействие сервисов: TicketHub
+# Схема связей контейнеров с подписями взаимодействий (протокол, контракт, топик).
+# Рендер: "C:\Program Files\D2\d2.exe" diagrams/service-interactions.d2 diagrams/service-interactions.svg
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+  }
+}
+
+direction: down
+
+clients: Клиенты {
+  style.fill: "#f5f5f5"
+  style.stroke: "#999999"
+
+  spa: "Web SPA\nкаталог, схема зала, заказ" {
+    style.fill: "#dddddd"
+  }
+  mobile: "Mobile App\niOS/Android" {
+    style.fill: "#dddddd"
+  }
+}
+
+edge: Edge-слой {
+  style.fill: "#f5f5f5"
+  style.stroke: "#999999"
+
+  cdn: "CDN (edge)\nстатика SPA, изображения,\nкэш каталога и шаблонов схем" {
+    style.fill: "#dddddd"
+  }
+}
+
+ext: Внешние системы {
+  style.fill: "#f5f5f5"
+  style.stroke: "#999999"
+
+  psp: "Платёжный провайдер\nосновной + резервный" {
+    style.fill: "#dddddd"
+  }
+  email: "Email-провайдер" {
+    style.fill: "#dddddd"
+  }
+  push: "Push-шлюз" {
+    style.fill: "#dddddd"
+  }
+  sms: "SMS-шлюз" {
+    style.fill: "#dddddd"
+  }
+  skud: "СКУД площадок\nтурникеты" {
+    style.fill: "#dddddd"
+  }
+}
+
+tickethub: TicketHub {
+  style.fill: "#f6f5ff"
+  style.stroke: "#1168bd"
+
+  gw: "API Gateway\nаутентификация, rate limit, роутинг"
+  wr: "Waiting Room\nвиртуальная очередь"
+  catalog: "Catalog Service\nсобытия, площадки, цены"
+  search: "Search Service\nпоиск, автоподсказки"
+  avail: "Availability Service\nдоступность мест в реальном времени"
+  user: "User Service\nаккаунты, роли, права"
+  booking: "Booking Service\nрезервирование мест"
+  order: "Order Service\nжизненный цикл заказа"
+  payment: "Payment Service\nоплата, возвраты, фейловер PSP"
+  ticket: "Ticket Service\nQR-билеты, PDF, валидация"
+  notif: "Notification Service\nemail, push, sms"
+  organizer_svc: "Organizer Service\nкабинет организатора, шаблоны схем"
+
+  pg: "PostgreSQL\nисточник истины" {
+    shape: cylinder
+    style.fill: "#f3f0fa"
+  }
+  redis: "Redis\nхолды, карты мест, очередь, кэш" {
+    shape: cylinder
+    style.fill: "#f3f0fa"
+  }
+  kafka: "Kafka\nшина событий" {
+    shape: cylinder
+    style.fill: "#f3f0fa"
+  }
+  es: "Elasticsearch\nпоисковый индекс" {
+    shape: cylinder
+    style.fill: "#f3f0fa"
+  }
+  s3: "S3\nшаблоны схем, PDF" {
+    shape: cylinder
+    style.fill: "#f3f0fa"
+  }
+  ch: "ClickHouse\nаналитика" {
+    shape: cylinder
+    style.fill: "#f3f0fa"
+  }
+}
+
+# --- вход и edge ---
+clients.spa -> edge.cdn: "статика SPA, изображения, шаблоны схем (HTTPS)" { style.font-color: "#000000" }
+clients.mobile -> edge.cdn: "статика, изображения (HTTPS)" { style.font-color: "#000000" }
+edge.cdn -> tickethub.gw: "cache-miss: каталог, шаблоны схем (HTTPS)" { style.font-color: "#000000" }
+clients.spa -> tickethub.gw: "HTTPS: REST + SSE, единый контракт всех каналов (N-25)" { style.font-color: "#000000" }
+clients.mobile -> tickethub.gw: "HTTPS: REST + SSE" { style.font-color: "#000000" }
+
+# --- роутинг gateway ---
+tickethub.gw -> tickethub.wr: "GET /queue/status, поллинг 20 с" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.catalog: "REST: каталог, карточка события" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.search: "REST: поиск, автоподсказки" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.avail: "REST: GET /events/{id}/availability\nSSE: GET /availability/stream" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.booking: "REST: POST /holds" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.order: "REST: POST /orders, GET /orders/{id}" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.payment: "REST: POST /payments" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.user: "REST: вход, регистрация, профиль" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.organizer_svc: "REST: CRUD событий, дашборд, шаблоны схем" { style.font-color: "#000000" }
+
+# --- синхронные чтения и хранилища ---
+tickethub.wr -> tickethub.redis: "ZSET wr:{event_id}, wr:admit" { style.font-color: "#000000" }
+tickethub.catalog -> tickethub.pg: "события, площадки, цены" { style.font-color: "#000000" }
+tickethub.catalog -> tickethub.redis: "кэш cache:event:{id}" { style.font-color: "#000000" }
+tickethub.search -> tickethub.es: "поисковый индекс" { style.font-color: "#000000" }
+tickethub.avail -> tickethub.redis: "карта мест seats:{event_id}, счётчики avail:{event_id}" { style.font-color: "#000000" }
+tickethub.user -> tickethub.pg: "users" { style.font-color: "#000000" }
+tickethub.organizer_svc -> tickethub.pg: "organizers, venues, seatmap_versions" { style.font-color: "#000000" }
+
+# --- продажа ---
+tickethub.booking -> tickethub.redis: "Lua-холд: seat:{event_id}:{seat}, zone_hold:{event_id}:{hold}" { style.font-color: "#000000" }
+tickethub.booking -> tickethub.pg: "seat_inventory: HELD в SOLD (optimistic locking)" { style.font-color: "#000000" }
+tickethub.order <-> tickethub.booking: "REST: проверка холда при создании заказа" { style.font-color: "#000000" }
+tickethub.order -> tickethub.pg: "orders, refunds" { style.font-color: "#000000" }
+tickethub.payment -> tickethub.pg: "payments, outbox" { style.font-color: "#000000" }
+tickethub.payment <-> ext.psp: "REST: платёж, возвраты\nwebhooks: HMAC-подпись + IP allowlist" { style.font-color: "#000000" }
+tickethub.ticket -> tickethub.pg: "tickets, статус check-in" { style.font-color: "#000000" }
+tickethub.ticket -> tickethub.s3: "PDF-билеты (presigned URL)" { style.font-color: "#000000" }
+tickethub.organizer_svc <-> tickethub.s3: "шаблоны схем: загрузка версий, отдача" { style.font-color: "#000000" }
+
+# --- асинхронный write-path (Kafka) ---
+tickethub.booking -> tickethub.kafka: "booking.seat-held, booking.seat-released" { style.font-color: "#000000" }
+tickethub.order -> tickethub.kafka: "orders.order-created, orders.order-refunded" { style.font-color: "#000000" }
+tickethub.payment -> tickethub.kafka: "payments.payment-confirmed, payments.payment-failed" { style.font-color: "#000000" }
+tickethub.ticket -> tickethub.kafka: "tickets.ticket-issued" { style.font-color: "#000000" }
+tickethub.organizer_svc -> tickethub.kafka: "catalog.event-updated" { style.font-color: "#000000" }
+
+tickethub.kafka -> tickethub.avail: "booking.seat-held, booking.seat-released (диффы SSE)" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.booking: "payments.payment-confirmed (finalize)" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.order: "payments.payment-confirmed, payments.payment-failed, orders.order-refunded" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.ticket: "payments.payment-confirmed (генерация билетов)" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.notif: "события для уведомлений" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.catalog: "catalog.event-updated (инвалидация кэша)" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.search: "catalog.event-updated (индексация)" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.ch: "стрим событий (аналитика)" { style.font-color: "#000000" }
+
+# --- внешние системы ---
+ext.skud -> tickethub.ticket: "REST: POST /tickets/validate (X-Api-Key)" { style.font-color: "#000000" }
+tickethub.notif -> ext.email: "письма, билеты (REST)" { style.font-color: "#000000" }
+tickethub.notif -> ext.push: "push-уведомления (REST)" { style.font-color: "#000000" }
+tickethub.notif -> ext.sms: "OTP, sms (REST)" { style.font-color: "#000000" }

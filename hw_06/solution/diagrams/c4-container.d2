@@ -1,0 +1,143 @@
+# C4 Level 2 - Containers: TicketHub
+# Рендер: "C:\Program Files\D2\d2.exe" diagrams/c4-container.d2 diagrams/c4-container.svg
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+  }
+}
+
+direction: down
+
+edge: Edge-слой {
+  style.fill: "#f5f5f5"
+  style.stroke: "#999999"
+
+  cdn: "CDN (edge)\nстатика SPA, изображения,\nкэш каталога и схем залов" {
+    style.fill: "#dddddd"
+  }
+}
+
+ext: Внешние системы {
+  style.fill: "#f5f5f5"
+  style.stroke: "#999999"
+
+  psp: "Платёжный провайдер\nосновной + резервный" {
+    style.fill: "#dddddd"
+  }
+  email: "Email-провайдер\nтранзакционные письма" {
+    style.fill: "#dddddd"
+  }
+  push: "Push-шлюз\npush-уведомления" {
+    style.fill: "#dddddd"
+  }
+  sms: "SMS-шлюз\nOTP-коды" {
+    style.fill: "#dddddd"
+  }
+  skud: "СКУД площадок" {
+    style.fill: "#dddddd"
+  }
+}
+
+tickethub: TicketHub {
+  style.fill: "#f6f5ff"
+  style.stroke: "#1168bd"
+
+  spa: "Web SPA\nкаталог, схема зала, заказ"
+  mobile: "Mobile App\niOS/Android"
+  gw: "API Gateway\nаутентификация, rate limit, роутинг"
+  wr: "Waiting Room\nвиртуальная очередь на старте продаж"
+  catalog: "Catalog Service\nсобытия, площадки, цены"
+  search: "Search Service\nпоиск, автоподсказки"
+  avail: "Availability Service\nдоступность мест в реальном времени"
+  user: "User Service\nаккаунты, роли, права"
+  booking: "Booking Service\nрезервирование мест, заказы"
+  order: "Order Service\nжизненный цикл заказа"
+  payment: "Payment Service\nоплата, возвраты, фейловер PSP"
+  ticket: "Ticket Service\nQR-билеты, PDF, валидация"
+  notif: "Notification Service\nemail, push, sms"
+  organizer_svc: "Organizer Service\nкабинет организатора, промокоды"
+
+  pg: "PostgreSQL\nзаказы, билеты, платежи" {
+    shape: cylinder
+    style.fill: "#f3f0fa"
+  }
+  redis: "Redis\nхолды мест, кэш, очередь" {
+    shape: cylinder
+    style.fill: "#f3f0fa"
+  }
+  kafka: "Kafka\nшина событий" {
+    shape: cylinder
+    style.fill: "#f3f0fa"
+  }
+  es: "Elasticsearch\nпоисковый индекс" {
+    shape: cylinder
+    style.fill: "#f3f0fa"
+  }
+  s3: "S3\nсхемы залов, PDF" {
+    shape: cylinder
+    style.fill: "#f3f0fa"
+  }
+  ch: "ClickHouse\nаналитика" {
+    shape: cylinder
+    style.fill: "#f3f0fa"
+  }
+}
+
+# --- клиенты и вход ---
+edge.cdn -> tickethub.spa: "статика SPA, изображения, схемы залов" { style.font-color: "#000000" }
+edge.cdn -> tickethub.gw: "cache-miss: каталог, схемы залов" { style.font-color: "#000000" }
+tickethub.spa -> tickethub.gw: "API-вызовы (HTTPS)" { style.font-color: "#000000" }
+tickethub.mobile -> tickethub.gw: "API-вызовы (HTTPS)" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.wr: "допуск при старте продаж" { style.font-color: "#000000" }
+
+# --- роутинг запросов ---
+tickethub.gw -> tickethub.avail { style.font-color: "#000000" }
+tickethub.gw -> tickethub.booking: "холд мест" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.order: "создание заказа" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.payment: "инициация платежа, ссылка на оплату" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.catalog { style.font-color: "#000000" }
+tickethub.gw -> tickethub.search { style.font-color: "#000000" }
+tickethub.gw -> tickethub.user: "вход, регистрация" { style.font-color: "#000000" }
+tickethub.gw -> tickethub.organizer_svc { style.font-color: "#000000" }
+
+# --- продажа ---
+tickethub.avail -> tickethub.redis { style.font-color: "#000000" }
+tickethub.booking -> tickethub.redis: "холд мест, 10 мин" { style.font-color: "#000000" }
+tickethub.booking -> tickethub.pg: "заказ" { style.font-color: "#000000" }
+tickethub.order <-> tickethub.booking: "проверка холда при создании заказа" { style.font-color: "#000000" }
+tickethub.order -> tickethub.pg { style.font-color: "#000000" }
+tickethub.payment <-> ext.psp: "платёж, возвраты, webhook" { style.font-color: "#000000" }
+tickethub.payment -> tickethub.kafka: "payments.payment-confirmed, payments.payment-failed" { style.font-color: "#000000" }
+tickethub.order -> tickethub.kafka: "orders.order-created, orders.order-refunded" { style.font-color: "#000000" }
+tickethub.booking -> tickethub.kafka: "booking.seat-held, booking.seat-released" { style.font-color: "#000000" }
+tickethub.ticket -> tickethub.kafka: "tickets.ticket-issued" { style.font-color: "#000000" }
+tickethub.organizer_svc -> tickethub.kafka: "catalog.event-updated" { style.font-color: "#000000" }
+tickethub.ticket -> tickethub.pg { style.font-color: "#000000" }
+tickethub.ticket -> tickethub.s3: "PDF" { style.font-color: "#000000" }
+tickethub.organizer_svc <-> tickethub.s3: "шаблоны схем залов: загрузка версий, отдача" { style.font-color: "#000000" }
+
+# --- контент, поиск, поддержка ---
+tickethub.catalog -> tickethub.pg { style.font-color: "#000000" }
+tickethub.catalog -> tickethub.redis: "кэш" { style.font-color: "#000000" }
+tickethub.search -> tickethub.es: "поисковый индекс" { style.font-color: "#000000" }
+tickethub.user -> tickethub.pg { style.font-color: "#000000" }
+tickethub.organizer_svc -> tickethub.pg { style.font-color: "#000000" }
+tickethub.organizer_svc -> tickethub.ch: "дашборд продаж (чтение)" { style.font-color: "#000000" }
+
+# --- асинхронный write-path: консьюмеры Kafka ---
+tickethub.kafka -> tickethub.avail: "booking.seat-held, booking.seat-released: диффы доступности" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.booking: "payments.payment-confirmed: места в SOLD" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.ticket: "payments.payment-confirmed: генерация билетов" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.order: "payments.payment-confirmed, payments.payment-failed" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.search: "catalog.event-updated: индексация" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.catalog: "catalog.event-updated: инвалидация кэша" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.notif: "события для уведомлений" { style.font-color: "#000000" }
+tickethub.kafka -> tickethub.ch: "стрим событий" { style.font-color: "#000000" }
+
+# --- внешние системы ---
+ext.skud -> tickethub.ticket: "валидация билета" { style.font-color: "#000000" }
+tickethub.notif -> ext.email: "письма, билеты" { style.font-color: "#000000" }
+tickethub.notif -> ext.push: "push-уведомления" { style.font-color: "#000000" }
+tickethub.notif -> ext.sms: "OTP, sms" { style.font-color: "#000000" }
